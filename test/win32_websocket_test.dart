@@ -1,0 +1,16 @@
+import 'package:win32_websocket/win32_websocket.dart';
+import 'package:test/test.dart';
+
+void main() {
+  group('A group of tests', () {
+    final awesome = Awesome();
+
+    setUp(() {
+      // Additional setup goes here.
+    });
+
+    test('First Test', () {
+      expect(awesome.isAwesome, isTrue);
+    });
+  });
+}

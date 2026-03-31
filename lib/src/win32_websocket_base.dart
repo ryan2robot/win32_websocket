@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
@@ -162,6 +163,25 @@ class WebSocketMessage {
 
   /// 获取二进制内容
   Uint8List? get binary => type == WebSocketMessageType.binary ? data as Uint8List : null;
+}
+
+/// 生成符合 RFC 6455 规范的 WebSocket 密钥
+///
+/// 返回一个 base64 编码的 16 字节随机数，使用加密安全的随机数生成器。
+/// 此密钥用于 WebSocket 握手过程中的 Sec-WebSocket-Key 头部。
+///
+/// 示例:
+/// ```dart
+/// final key = generateWebSocketKey();
+/// print(key); // 输出类似: "dGhlIHNhbXBsZSBub25jZQ=="
+/// ```
+String generateWebSocketKey() {
+  final random = Random.secure();
+  final bytes = Uint8List(16);
+  for (var i = 0; i < 16; i++) {
+    bytes[i] = random.nextInt(256);
+  }
+  return base64Encode(bytes);
 }
 
 /// 使用 Windows WinHTTP API 的 WebSocket 客户端
@@ -499,28 +519,7 @@ class WinHttpWebSocket {
   }
 
   /// 生成 WebSocket key
-  String _generateWebSocketKey() {
-    final random = DateTime.now().millisecondsSinceEpoch;
-    final key = base64Encode([
-      (random >> 24) & 0xFF,
-      (random >> 16) & 0xFF,
-      (random >> 8) & 0xFF,
-      random & 0xFF,
-      (random ~/ 2 >> 24) & 0xFF,
-      (random ~/ 2 >> 16) & 0xFF,
-      (random ~/ 2 >> 8) & 0xFF,
-      (random ~/ 2) & 0xFF,
-      (random ~/ 3 >> 24) & 0xFF,
-      (random ~/ 3 >> 16) & 0xFF,
-      (random ~/ 3 >> 8) & 0xFF,
-      (random ~/ 3) & 0xFF,
-      (random ~/ 5 >> 24) & 0xFF,
-      (random ~/ 5 >> 16) & 0xFF,
-      (random ~/ 5 >> 8) & 0xFF,
-      (random ~/ 5) & 0xFF,
-    ]);
-    return key;
-  }
+  String _generateWebSocketKey() => generateWebSocketKey();
 
   /// 设置状态
   void _setState(WebSocketState newState) {

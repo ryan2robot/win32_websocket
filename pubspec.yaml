@@ -1,14 +1,14 @@
 name: win32_websocket
-description: A starting point for Dart libraries or applications.
+description: A Dart WebSocket library using Windows WinHTTP API.
 version: 0.0.1
 repository: https://github.com/Win32WebSocket/win32_websocket
 
 environment:
-  sdk: ^3.11.1
+  sdk: ^3.0.0
 
-# Add regular dependencies here.
 dependencies:
-  # path: ^1.9.0
+  win32: ^5.5.0
+  ffi: ^2.1.2
 
 dev_dependencies:
   lints: ^6.0.0

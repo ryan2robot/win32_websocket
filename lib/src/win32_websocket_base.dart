@@ -13,8 +13,21 @@ const int WINHTTP_ACCESS_TYPE_NAMED_PROXY = 3;
 
 const int WINHTTP_FLAG_SECURE = 0x00800000;
 
+// WinHTTP 选项
+const int WINHTTP_OPTION_SECURITY_FLAGS = 31;
+const int WINHTTP_OPTION_UPGRADE_TO_WEB_SOCKET = 114;
+
+// 安全标志
+const int SECURITY_FLAG_IGNORE_UNKNOWN_CA = 0x00000100;
+const int SECURITY_FLAG_IGNORE_CERT_WRONG_USAGE = 0x00000200;
+const int SECURITY_FLAG_IGNORE_CERT_CN_INVALID = 0x00001000;
+const int SECURITY_FLAG_IGNORE_CERT_DATE_INVALID = 0x00002000;
+
 const int WINHTTP_ADDREQ_FLAG_ADD = 0x20000000;
 const int WINHTTP_ADDREQ_FLAG_REPLACE = 0x80000000;
+
+// WinHTTP 查询信息标志
+const int WINHTTP_QUERY_STATUS_CODE = 19;
 
 const int WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE = 0;
 const int WINHTTP_WEB_SOCKET_UTF8_FRAGMENT_BUFFER_TYPE = 1;
@@ -38,6 +51,12 @@ typedef WinHttpOpenRequestDart = Pointer<Void> Function(Pointer<Void> hConnect, 
 
 typedef WinHttpAddRequestHeadersC = Int32 Function(Pointer<Void> hRequest, Pointer<Utf16> lpszHeaders, Uint32 dwHeadersLength, Uint32 dwModifiers);
 typedef WinHttpAddRequestHeadersDart = int Function(Pointer<Void> hRequest, Pointer<Utf16> lpszHeaders, int dwHeadersLength, int dwModifiers);
+
+typedef WinHttpSetOptionC = Int32 Function(Pointer<Void> hInternet, Uint32 dwOption, Pointer<Void> lpBuffer, Uint32 dwBufferLength);
+typedef WinHttpSetOptionDart = int Function(Pointer<Void> hInternet, int dwOption, Pointer<Void> lpBuffer, int dwBufferLength);
+
+typedef WinHttpQueryHeadersC = Int32 Function(Pointer<Void> hRequest, Uint32 dwInfoLevel, Pointer<Utf16> pwszName, Pointer<Void> lpBuffer, Pointer<Uint32> lpdwBufferLength, Pointer<Uint32> lpdwIndex);
+typedef WinHttpQueryHeadersDart = int Function(Pointer<Void> hRequest, int dwInfoLevel, Pointer<Utf16> pwszName, Pointer<Void> lpBuffer, Pointer<Uint32> lpdwBufferLength, Pointer<Uint32> lpdwIndex);
 
 typedef WinHttpSendRequestC = Int32 Function(Pointer<Void> hRequest, Pointer<Utf16> lpszHeaders, Uint32 dwHeadersLength, Pointer<Void> lpOptional, Uint32 dwOptionalLength, Uint32 dwTotalLength, UintPtr dwContext);
 typedef WinHttpSendRequestDart = int Function(Pointer<Void> hRequest, Pointer<Utf16> lpszHeaders, int dwHeadersLength, Pointer<Void> lpOptional, int dwOptionalLength, int dwTotalLength, int dwContext);
@@ -83,6 +102,8 @@ class WinHttpLibrary {
   static final WinHttpConnectDart WinHttpConnect = winhttp.lookupFunction<WinHttpConnectC, WinHttpConnectDart>('WinHttpConnect');
   static final WinHttpOpenRequestDart WinHttpOpenRequest = winhttp.lookupFunction<WinHttpOpenRequestC, WinHttpOpenRequestDart>('WinHttpOpenRequest');
   static final WinHttpAddRequestHeadersDart WinHttpAddRequestHeaders = winhttp.lookupFunction<WinHttpAddRequestHeadersC, WinHttpAddRequestHeadersDart>('WinHttpAddRequestHeaders');
+  static final WinHttpSetOptionDart WinHttpSetOption = winhttp.lookupFunction<WinHttpSetOptionC, WinHttpSetOptionDart>('WinHttpSetOption');
+  static final WinHttpQueryHeadersDart WinHttpQueryHeaders = winhttp.lookupFunction<WinHttpQueryHeadersC, WinHttpQueryHeadersDart>('WinHttpQueryHeaders');
   static final WinHttpSendRequestDart WinHttpSendRequest = winhttp.lookupFunction<WinHttpSendRequestC, WinHttpSendRequestDart>('WinHttpSendRequest');
   static final WinHttpReceiveResponseDart WinHttpReceiveResponse = winhttp.lookupFunction<WinHttpReceiveResponseC, WinHttpReceiveResponseDart>('WinHttpReceiveResponse');
   static final WinHttpWebSocketCompleteUpgradeDart WinHttpWebSocketCompleteUpgrade = winhttp.lookupFunction<WinHttpWebSocketCompleteUpgradeC, WinHttpWebSocketCompleteUpgradeDart>('WinHttpWebSocketCompleteUpgrade');
@@ -339,12 +360,33 @@ class WinHttpWebSocket {
         );
       }
 
+      // 查询响应状态码
+      final statusCode = calloc<Uint32>();
+      final statusCodeSize = calloc<Uint32>()..value = sizeOf<Uint32>();
+      try {
+        final queryResult = WinHttpLibrary.WinHttpQueryHeaders(
+          _request!,
+          WINHTTP_QUERY_STATUS_CODE,
+          nullptr,
+          statusCode.cast<Void>(),
+          statusCodeSize,
+          nullptr,
+        );
+        if (queryResult != 0) {
+          print('HTTP Status Code: ${statusCode.value}');
+        }
+      } finally {
+        calloc.free(statusCode);
+        calloc.free(statusCodeSize);
+      }
+
       // 升级到 WebSocket
       _webSocket = WinHttpLibrary.WinHttpWebSocketCompleteUpgrade(_request!, 0);
       if (_webSocket == nullptr || _webSocket!.address == 0) {
+        final error = WinHttpLibrary.GetLastError();
         throw WebSocketException(
           'Failed to upgrade to WebSocket',
-          errorCode: WinHttpLibrary.GetLastError(),
+          errorCode: error,
         );
       }
 

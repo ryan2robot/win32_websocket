@@ -4,14 +4,37 @@ import 'dart:typed_data';
 import 'package:test/test.dart';
 import 'package:win32_websocket/win32_websocket.dart';
 
+import 'websocket_server.dart';
+
 /// WebSocket 测试服务器地址
 /// 默认使用公共测试服务器，可以通过环境变量覆盖
 const String _testServerUrl = String.fromEnvironment(
   'WS_TEST_SERVER',
-  defaultValue: 'wss://echo.websocket.org',
+  defaultValue: '', // 空字符串表示使用本地服务器
 );
 
 void main() {
+  late WebSocketTestServer? _localServer;
+  late String _serverUrl;
+
+  setUpAll(() async {
+    // 如果环境变量设置了外部服务器，使用它
+    if (_testServerUrl.isNotEmpty) {
+      _serverUrl = _testServerUrl;
+      _localServer = null;
+      print('Using external server: $_serverUrl');
+    } else {
+      // 否则启动本地服务器
+      _localServer = await startTestServer();
+      _serverUrl = 'ws://localhost:${_localServer!.port}';
+      print('Using local server: $_serverUrl');
+    }
+  });
+
+  tearDownAll(() async {
+    await _localServer?.stop();
+  });
+
   group('WinHttpWebSocket', () {
     test('can be instantiated', () {
       final ws = WinHttpWebSocket();
@@ -153,10 +176,8 @@ void main() {
       // 初始状态
       expect(ws.state, WebSocketState.closed);
 
-      // 注意：这里使用一个公共的 WebSocket 测试服务器
-      // 如果连接失败，测试会被跳过而不是失败
       try {
-        await ws.connect(_testServerUrl);
+        await ws.connect(_serverUrl);
 
         // 验证状态变化序列
         expect(states, contains(WebSocketState.connecting));
@@ -171,8 +192,8 @@ void main() {
         expect(ws.state, WebSocketState.closed);
         expect(ws.isConnected, isFalse);
       } on WebSocketException catch (e) {
-        // 如果连接失败（例如网络问题），跳过测试
-        markTestSkipped('无法连接到测试服务器 $_testServerUrl: $e');
+        // 如果连接失败，跳过测试
+        markTestSkipped('无法连接到测试服务器 $_serverUrl: $e');
       } finally {
         await subscription.cancel();
         ws.dispose();
@@ -183,15 +204,15 @@ void main() {
       final ws = WinHttpWebSocket();
 
       try {
-        await ws.connect(_testServerUrl);
+        await ws.connect(_serverUrl);
 
         // 尝试再次连接应该抛出异常
         expect(
-          () => ws.connect(_testServerUrl),
+          () => ws.connect(_serverUrl),
           throwsA(isA<WebSocketException>()),
         );
       } on WebSocketException catch (e) {
-        markTestSkipped('无法连接到测试服务器 $_testServerUrl: $e');
+        markTestSkipped('无法连接到测试服务器 $_serverUrl: $e');
       } finally {
         ws.dispose();
       }
@@ -207,7 +228,7 @@ void main() {
       final subscription = ws.messages.listen(receivedMessages.add);
 
       try {
-        await ws.connect(_testServerUrl);
+        await ws.connect(_serverUrl);
 
         const testMessage = 'Hello, WebSocket!';
         await ws.sendText(testMessage);
@@ -223,7 +244,7 @@ void main() {
         expect(textMessages, isNotEmpty);
         expect(textMessages.first.text, equals(testMessage));
       } on WebSocketException catch (e) {
-        markTestSkipped('无法连接到测试服务器 $_testServerUrl: $e');
+        markTestSkipped('无法连接到测试服务器 $_serverUrl: $e');
       } finally {
         await subscription.cancel();
         await ws.close();
@@ -238,7 +259,7 @@ void main() {
       final subscription = ws.messages.listen(receivedMessages.add);
 
       try {
-        await ws.connect(_testServerUrl);
+        await ws.connect(_serverUrl);
 
         final testData = Uint8List.fromList([0x01, 0x02, 0x03, 0x04, 0xFF]);
         await ws.sendBinary(testData);
@@ -254,7 +275,7 @@ void main() {
         expect(binaryMessages, isNotEmpty);
         expect(binaryMessages.first.binary, equals(testData));
       } on WebSocketException catch (e) {
-        markTestSkipped('无法连接到测试服务器 $_testServerUrl: $e');
+        markTestSkipped('无法连接到测试服务器 $_serverUrl: $e');
       } finally {
         await subscription.cancel();
         await ws.close();
@@ -269,7 +290,7 @@ void main() {
       final subscription = ws.messages.listen(receivedMessages.add);
 
       try {
-        await ws.connect(_testServerUrl);
+        await ws.connect(_serverUrl);
 
         // 发送多条消息
         await ws.sendText('Message 1');
@@ -288,7 +309,7 @@ void main() {
         expect(textMessages, contains('Message 2'));
         expect(textMessages, contains('Message 3'));
       } on WebSocketException catch (e) {
-        markTestSkipped('无法连接到测试服务器 $_testServerUrl: $e');
+        markTestSkipped('无法连接到测试服务器 $_serverUrl: $e');
       } finally {
         await subscription.cancel();
         await ws.close();
@@ -336,14 +357,14 @@ void main() {
       final ws = WinHttpWebSocket();
 
       try {
-        await ws.connect(_testServerUrl);
+        await ws.connect(_serverUrl);
         await ws.close();
         await ws.close(); // 第二次调用应该安全
         await ws.close(); // 第三次调用也应该安全
 
         expect(ws.state, WebSocketState.closed);
       } on WebSocketException catch (e) {
-        markTestSkipped('无法连接到测试服务器 $_testServerUrl: $e');
+        markTestSkipped('无法连接到测试服务器 $_serverUrl: $e');
       } finally {
         ws.dispose();
       }
@@ -373,13 +394,13 @@ void main() {
       final subscription = ws.stateChanges.listen(events.add);
 
       try {
-        await ws.connect(_testServerUrl);
+        await ws.connect(_serverUrl);
         await ws.close();
 
         // 验证收到了状态变化事件
         expect(events, isNotEmpty);
       } on WebSocketException catch (e) {
-        markTestSkipped('无法连接到测试服务器 $_testServerUrl: $e');
+        markTestSkipped('无法连接到测试服务器 $_serverUrl: $e');
       } finally {
         await subscription.cancel();
         ws.dispose();

@@ -130,7 +130,7 @@ void main() {
         ws = await Win32WebSocket.connect(Uri.parse(serverUrl));
         expect(ws, isNotNull);
       } on WebSocketException catch (e) {
-        markTestSkipped('无法连接到测试服务器 $serverUrl: $e');
+        fail('无法连接到测试服务器 $serverUrl: $e');
       }
     }, timeout: const Timeout(Duration(seconds: 5)));
 
@@ -143,7 +143,7 @@ void main() {
         );
         expect(ws, isNotNull);
       } on WebSocketException catch (e) {
-        markTestSkipped('无法连接到测试服务器 $serverUrl: $e');
+        fail('无法连接到测试服务器 $serverUrl: $e');
       }
     }, timeout: const Timeout(Duration(seconds: 5)));
 
@@ -191,7 +191,7 @@ void main() {
         expect(textEvents, isNotEmpty);
         expect(textEvents.first.text, equals(testMessage));
       } on WebSocketException catch (e) {
-        markTestSkipped('无法连接到测试服务器 $serverUrl: $e');
+        fail('无法连接到测试服务器 $serverUrl: $e');
       } finally {
         await subscription?.cancel();
         await ws?.close();
@@ -228,7 +228,7 @@ void main() {
         expect(binaryEvents, isNotEmpty);
         expect(binaryEvents.first.data, equals(testData));
       } on WebSocketException catch (e) {
-        markTestSkipped('无法连接到测试服务器 $serverUrl: $e');
+        fail('无法连接到测试服务器 $serverUrl: $e');
       } finally {
         await subscription?.cancel();
         await ws?.close();
@@ -272,7 +272,7 @@ void main() {
         expect(textEvents, contains('Message 2'));
         expect(textEvents, contains('Message 3'));
       } on WebSocketException catch (e) {
-        markTestSkipped('无法连接到测试服务器 $serverUrl: $e');
+        fail('无法连接到测试服务器 $serverUrl: $e');
       } finally {
         await subscription?.cancel();
         await ws?.close();
@@ -298,7 +298,7 @@ void main() {
           throwsA(isA<WebSocketConnectionClosed>()),
         );
       } on WebSocketException catch (e) {
-        markTestSkipped('无法连接到测试服务器 $serverUrl: $e');
+        fail('无法连接到测试服务器 $serverUrl: $e');
       }
     }, timeout: const Timeout(Duration(seconds: 5)));
 
@@ -313,7 +313,7 @@ void main() {
           throwsA(isA<WebSocketConnectionClosed>()),
         );
       } on WebSocketException catch (e) {
-        markTestSkipped('无法连接到测试服务器 $serverUrl: $e');
+        fail('无法连接到测试服务器 $serverUrl: $e');
       }
     }, timeout: const Timeout(Duration(seconds: 5)));
 
@@ -325,7 +325,7 @@ void main() {
         await ws.close(); // 第二次调用应该安全
         await ws.close(); // 第三次调用也应该安全
       } on WebSocketException catch (e) {
-        markTestSkipped('无法连接到测试服务器 $serverUrl: $e');
+        fail('无法连接到测试服务器 $serverUrl: $e');
       }
     }, timeout: const Timeout(Duration(seconds: 5)));
 
@@ -343,7 +343,7 @@ void main() {
         // 有效的 code
         await ws.close(1000);
       } on WebSocketException catch (e) {
-        markTestSkipped('无法连接到测试服务器 $serverUrl: $e');
+        fail('无法连接到测试服务器 $serverUrl: $e');
       }
     }, timeout: const Timeout(Duration(seconds: 5)));
 
@@ -361,7 +361,7 @@ void main() {
 
         await ws.close();
       } on WebSocketException catch (e) {
-        markTestSkipped('无法连接到测试服务器 $serverUrl: $e');
+        fail('无法连接到测试服务器 $serverUrl: $e');
       }
     }, timeout: const Timeout(Duration(seconds: 5)));
   });
@@ -383,7 +383,7 @@ void main() {
         await subscription2.cancel();
         await ws.close();
       } on WebSocketException catch (e) {
-        markTestSkipped('无法连接到测试服务器 $serverUrl: $e');
+        fail('无法连接到测试服务器 $serverUrl: $e');
       }
     }, timeout: const Timeout(Duration(seconds: 5)));
 
@@ -405,7 +405,7 @@ void main() {
         expect(closeEvents.first.code, equals(1000));
         expect(closeEvents.first.reason, equals('Test close'));
       } on WebSocketException catch (e) {
-        markTestSkipped('无法连接到测试服务器 $serverUrl: $e');
+        fail('无法连接到测试服务器 $serverUrl: $e');
       } finally {
         await subscription?.cancel();
       }
@@ -429,7 +429,7 @@ void main() {
         // 验证关闭方法
         await ws.close();
       } on WebSocketException catch (e) {
-        markTestSkipped('无法连接到测试服务器 $serverUrl: $e');
+        fail('无法连接到测试服务器 $serverUrl: $e');
       }
     }, timeout: const Timeout(Duration(seconds: 5)));
 
@@ -461,7 +461,7 @@ void main() {
 
         expect(receivedTexts, contains('Pattern matching test'));
       } on WebSocketException catch (e) {
-        markTestSkipped('无法连接到测试服务器 $serverUrl: $e');
+        fail('无法连接到测试服务器 $serverUrl: $e');
       } finally {
         await subscription?.cancel();
         await ws?.close();

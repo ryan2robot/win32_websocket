@@ -132,7 +132,7 @@ void main() {
       } on WebSocketException catch (e) {
         markTestSkipped('无法连接到测试服务器 $serverUrl: $e');
       }
-    }, timeout: const Timeout(Duration(seconds: 30)));
+    }, timeout: const Timeout(Duration(seconds: 5)));
 
     test('connection with protocols', () async {
       Win32WebSocket? ws;
@@ -145,7 +145,7 @@ void main() {
       } on WebSocketException catch (e) {
         markTestSkipped('无法连接到测试服务器 $serverUrl: $e');
       }
-    }, timeout: const Timeout(Duration(seconds: 30)));
+    }, timeout: const Timeout(Duration(seconds: 5)));
 
     test('invalid URL scheme throws ArgumentError', () async {
       expect(
@@ -196,7 +196,7 @@ void main() {
         await subscription?.cancel();
         await ws?.close();
       }
-    }, timeout: const Timeout(Duration(seconds: 30)));
+    }, timeout: const Timeout(Duration(seconds: 5)));
 
     test('send and receive binary message', () async {
       Win32WebSocket? ws;
@@ -233,7 +233,7 @@ void main() {
         await subscription?.cancel();
         await ws?.close();
       }
-    }, timeout: const Timeout(Duration(seconds: 30)));
+    }, timeout: const Timeout(Duration(seconds: 5)));
 
     test('multiple messages in sequence', () async {
       Win32WebSocket? ws;
@@ -277,7 +277,7 @@ void main() {
         await subscription?.cancel();
         await ws?.close();
       }
-    }, timeout: const Timeout(Duration(seconds: 30)));
+    }, timeout: const Timeout(Duration(seconds: 5)));
   });
 
   group('Error Handling', () {
@@ -300,7 +300,7 @@ void main() {
       } on WebSocketException catch (e) {
         markTestSkipped('无法连接到测试服务器 $serverUrl: $e');
       }
-    }, timeout: const Timeout(Duration(seconds: 30)));
+    }, timeout: const Timeout(Duration(seconds: 5)));
 
     test('cannot send bytes after close', () async {
       Win32WebSocket? ws;
@@ -315,7 +315,7 @@ void main() {
       } on WebSocketException catch (e) {
         markTestSkipped('无法连接到测试服务器 $serverUrl: $e');
       }
-    }, timeout: const Timeout(Duration(seconds: 30)));
+    }, timeout: const Timeout(Duration(seconds: 5)));
 
     test('close can be called multiple times safely', () async {
       Win32WebSocket? ws;
@@ -327,7 +327,7 @@ void main() {
       } on WebSocketException catch (e) {
         markTestSkipped('无法连接到测试服务器 $serverUrl: $e');
       }
-    }, timeout: const Timeout(Duration(seconds: 30)));
+    }, timeout: const Timeout(Duration(seconds: 5)));
 
     test('close with invalid code throws ArgumentError', () async {
       Win32WebSocket? ws;
@@ -345,7 +345,7 @@ void main() {
       } on WebSocketException catch (e) {
         markTestSkipped('无法连接到测试服务器 $serverUrl: $e');
       }
-    }, timeout: const Timeout(Duration(seconds: 30)));
+    }, timeout: const Timeout(Duration(seconds: 5)));
 
     test('close with too long reason throws ArgumentError', () async {
       Win32WebSocket? ws;
@@ -363,7 +363,7 @@ void main() {
       } on WebSocketException catch (e) {
         markTestSkipped('无法连接到测试服务器 $serverUrl: $e');
       }
-    }, timeout: const Timeout(Duration(seconds: 30)));
+    }, timeout: const Timeout(Duration(seconds: 5)));
   });
 
   group('Stream Behavior', () {
@@ -385,7 +385,7 @@ void main() {
       } on WebSocketException catch (e) {
         markTestSkipped('无法连接到测试服务器 $serverUrl: $e');
       }
-    }, timeout: const Timeout(Duration(seconds: 30)));
+    }, timeout: const Timeout(Duration(seconds: 5)));
 
     test('events stream emits CloseReceived on close', () async {
       Win32WebSocket? ws;
@@ -409,7 +409,7 @@ void main() {
       } finally {
         await subscription?.cancel();
       }
-    }, timeout: const Timeout(Duration(seconds: 30)));
+    }, timeout: const Timeout(Duration(seconds: 5)));
   });
 
   group('package:web_socket Compatibility', () {
@@ -431,7 +431,7 @@ void main() {
       } on WebSocketException catch (e) {
         markTestSkipped('无法连接到测试服务器 $serverUrl: $e');
       }
-    }, timeout: const Timeout(Duration(seconds: 30)));
+    }, timeout: const Timeout(Duration(seconds: 5)));
 
     test('can use pattern matching on events', () async {
       Win32WebSocket? ws;
@@ -466,6 +466,6 @@ void main() {
         await subscription?.cancel();
         await ws?.close();
       }
-    }, timeout: const Timeout(Duration(seconds: 30)));
+    }, timeout: const Timeout(Duration(seconds: 5)));
   });
 }

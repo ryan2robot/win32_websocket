@@ -10,6 +10,7 @@ const int WINHTTP_ACCESS_TYPE_NO_PROXY = 1;
 const int WINHTTP_ACCESS_TYPE_NAMED_PROXY = 3;
 
 const int WINHTTP_FLAG_SECURE = 0x00800000;
+const int WINHTTP_FLAG_ASYNC = 0x10000000;
 
 // WinHTTP 选项
 const int WINHTTP_OPTION_SECURITY_FLAGS = 31;
@@ -77,6 +78,9 @@ typedef WinHttpWebSocketCloseDart = int Function(Pointer<Void> hWebSocket, int u
 typedef WinHttpCloseHandleC = Int32 Function(Pointer<Void> hInternet);
 typedef WinHttpCloseHandleDart = int Function(Pointer<Void> hInternet);
 
+typedef WinHttpSetTimeoutsC = Int32 Function(Pointer<Void> hInternet, Int32 nResolveTimeout, Int32 nConnectTimeout, Int32 nSendTimeout, Int32 nReceiveTimeout);
+typedef WinHttpSetTimeoutsDart = int Function(Pointer<Void> hInternet, int nResolveTimeout, int nConnectTimeout, int nSendTimeout, int nReceiveTimeout);
+
 typedef GetLastErrorC = Uint32 Function();
 typedef GetLastErrorDart = int Function();
 
@@ -95,6 +99,16 @@ class WinHttpLibrary {
     return _kernel32!;
   }
 
+  // 检查 WebSocket 函数是否可用（Windows 8+）
+  static bool get isWebSocketAvailable {
+    try {
+      winhttp.lookupFunction<WinHttpWebSocketCompleteUpgradeC, WinHttpWebSocketCompleteUpgradeDart>('WinHttpWebSocketCompleteUpgrade');
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   // WinHTTP 函数
   static final WinHttpOpenDart WinHttpOpen = winhttp.lookupFunction<WinHttpOpenC, WinHttpOpenDart>('WinHttpOpen');
   static final WinHttpConnectDart WinHttpConnect = winhttp.lookupFunction<WinHttpConnectC, WinHttpConnectDart>('WinHttpConnect');
@@ -109,5 +123,6 @@ class WinHttpLibrary {
   static final WinHttpWebSocketReceiveDart WinHttpWebSocketReceive = winhttp.lookupFunction<WinHttpWebSocketReceiveC, WinHttpWebSocketReceiveDart>('WinHttpWebSocketReceive');
   static final WinHttpWebSocketCloseDart WinHttpWebSocketClose = winhttp.lookupFunction<WinHttpWebSocketCloseC, WinHttpWebSocketCloseDart>('WinHttpWebSocketClose');
   static final WinHttpCloseHandleDart WinHttpCloseHandle = winhttp.lookupFunction<WinHttpCloseHandleC, WinHttpCloseHandleDart>('WinHttpCloseHandle');
+  static final WinHttpSetTimeoutsDart WinHttpSetTimeouts = winhttp.lookupFunction<WinHttpSetTimeoutsC, WinHttpSetTimeoutsDart>('WinHttpSetTimeouts');
   static final GetLastErrorDart GetLastError = kernel32.lookupFunction<GetLastErrorC, GetLastErrorDart>('GetLastError');
 }

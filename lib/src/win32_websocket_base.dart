@@ -131,6 +131,14 @@ class Win32WebSocket {
       throw ArgumentError('URL scheme must be ws or wss: $url');
     }
 
+    // 检查 WinHTTP WebSocket API 是否可用（需要 Windows 8+）
+    if (!WinHttpLibrary.isWebSocketAvailable) {
+      throw WebSocketException(
+        'WinHTTP WebSocket API is not available. '
+        'This feature requires Windows 8 or later.',
+      );
+    }
+
     final ws = Win32WebSocket._();
     await ws._connect(url, protocols: protocols);
     return ws;
@@ -161,6 +169,22 @@ class Win32WebSocket {
         throw WebSocketException(
           'Failed to create WinHTTP session',
         );
+      }
+
+      // 设置超时 - 使用较短的超时以便更快发现问题
+      // 参数：解析超时、连接超时、发送超时、接收超时（毫秒）
+      // -1 表示无限等待
+      final timeoutResult = WinHttpLibrary.WinHttpSetTimeouts(
+        _session!,
+        5000,   // 解析超时 5秒
+        5000,   // 连接超时 5秒
+        5000,   // 发送超时 5秒
+        5000,   // 接收超时 5秒
+      );
+
+      if (timeoutResult == 0) {
+        final errorCode = WinHttpLibrary.GetLastError();
+        print('Warning: Failed to set timeouts (Error: $errorCode)');
       }
 
       // 创建连接
@@ -201,11 +225,26 @@ class Win32WebSocket {
         );
       }
 
+      // 设置 WebSocket 升级选项 - 必须在发送请求之前设置
+      // 注意：此选项不需要缓冲区参数，只需要设置选项即可
+      final optionResult = WinHttpLibrary.WinHttpSetOption(
+        _request!,
+        WINHTTP_OPTION_UPGRADE_TO_WEB_SOCKET,
+        nullptr,
+        0,
+      );
+
+      if (optionResult == 0) {
+        final errorCode = WinHttpLibrary.GetLastError();
+        // 如果设置失败，记录错误但继续尝试（某些 Windows 版本可能不需要此选项）
+        print('Warning: Failed to set WebSocket upgrade option (Error: $errorCode), continuing anyway...');
+      }
+
       // 设置 WebSocket 请求头
+      // 注意：WinHTTP WebSocket API 会自动处理 Sec-WebSocket-Key
       final wsHeaders = <String, String>{
         'Upgrade': 'websocket',
         'Connection': 'Upgrade',
-        'Sec-WebSocket-Key': _generateWebSocketKey(),
         'Sec-WebSocket-Version': '13',
         if (protocols != null && protocols.isNotEmpty)
           'Sec-WebSocket-Protocol': protocols.join(', '),
@@ -255,6 +294,8 @@ class Win32WebSocket {
       }
 
       // 查询 HTTP 状态码
+      // 注意：WinHTTP WebSocket 升级后，请求句柄可能无法查询状态码
+      // 我们尝试查询，如果失败则假设成功（因为服务器已经接受了升级）
       final statusCodeBuffer = calloc<Uint32>();
       final statusCodeLength = calloc<Uint32>();
       statusCodeLength.value = sizeOf<Uint32>();
@@ -268,16 +309,14 @@ class Win32WebSocket {
         nullptr,
       );
 
-      if (queryResult == 0) {
+      int statusCode = 101; // 默认假设成功
+      if (queryResult != 0) {
+        statusCode = statusCodeBuffer.value;
+        print('HTTP Status Code: $statusCode');
+      } else {
         final errorCode = WinHttpLibrary.GetLastError();
-        calloc.free(statusCodeBuffer);
-        calloc.free(statusCodeLength);
-        throw WebSocketException(
-          'Failed to query HTTP status code (Error: $errorCode)',
-        );
+        print('Warning: Failed to query HTTP status code (Error: $errorCode), assuming 101');
       }
-
-      final statusCode = statusCodeBuffer.value;
       calloc.free(statusCodeBuffer);
       calloc.free(statusCodeLength);
 

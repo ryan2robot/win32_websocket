@@ -248,16 +248,51 @@ class Win32WebSocket {
       // 接收响应
       final receiveResult = WinHttpLibrary.WinHttpReceiveResponse(_request!, nullptr);
       if (receiveResult == 0) {
+        final errorCode = WinHttpLibrary.GetLastError();
         throw WebSocketException(
-          'Failed to receive WebSocket response',
+          'Failed to receive WebSocket response (Error: $errorCode)',
+        );
+      }
+
+      // 查询 HTTP 状态码
+      final statusCodeBuffer = calloc<Uint32>();
+      final statusCodeLength = calloc<Uint32>();
+      statusCodeLength.value = sizeOf<Uint32>();
+
+      final queryResult = WinHttpLibrary.WinHttpQueryHeaders(
+        _request!,
+        WINHTTP_QUERY_STATUS_CODE,
+        nullptr,
+        statusCodeBuffer.cast<Void>(),
+        statusCodeLength,
+        nullptr,
+      );
+
+      if (queryResult == 0) {
+        final errorCode = WinHttpLibrary.GetLastError();
+        calloc.free(statusCodeBuffer);
+        calloc.free(statusCodeLength);
+        throw WebSocketException(
+          'Failed to query HTTP status code (Error: $errorCode)',
+        );
+      }
+
+      final statusCode = statusCodeBuffer.value;
+      calloc.free(statusCodeBuffer);
+      calloc.free(statusCodeLength);
+
+      if (statusCode != 101) {
+        throw WebSocketException(
+          'Expected HTTP 101 Switching Protocols, got $statusCode',
         );
       }
 
       // 升级到 WebSocket
       _webSocket = WinHttpLibrary.WinHttpWebSocketCompleteUpgrade(_request!, 0);
       if (_webSocket == nullptr || _webSocket!.address == 0) {
+        final errorCode = WinHttpLibrary.GetLastError();
         throw WebSocketException(
-          'Failed to upgrade to WebSocket',
+          'Failed to upgrade to WebSocket (Error: $errorCode)',
         );
       }
 
@@ -329,11 +364,7 @@ class Win32WebSocket {
 
   /// 关闭 WebSocket 连接 - 兼容 package:web_socket
   Future<void> close([int? code, String? reason]) async {
-    if (_isClosed) {
-      throw const WebSocketConnectionClosed();
-    }
-
-    if (_isClosing) {
+    if (_isClosed || _isClosing) {
       return;
     }
 

@@ -114,89 +114,99 @@ class WinHttpLibrary {
   static final GetLastErrorDart GetLastError = kernel32.lookupFunction<GetLastErrorC, GetLastErrorDart>('GetLastError');
 }
 
-/// WebSocket 连接状态
-enum WebSocketState {
-  /// 连接中
-  connecting,
+/// WebSocket 事件基类
+sealed class WebSocketEvent {
+  const WebSocketEvent();
+}
 
-  /// 已连接
-  open,
+/// 文本数据接收事件
+class TextDataReceived extends WebSocketEvent {
+  final String text;
 
-  /// 正在关闭
-  closing,
+  const TextDataReceived(this.text);
 
-  /// 已关闭
-  closed,
+  @override
+  String toString() => 'TextDataReceived(text: $text)';
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TextDataReceived &&
+          runtimeType == other.runtimeType &&
+          text == other.text;
+
+  @override
+  int get hashCode => text.hashCode;
+}
+
+/// 二进制数据接收事件
+class BinaryDataReceived extends WebSocketEvent {
+  final Uint8List data;
+
+  const BinaryDataReceived(this.data);
+
+  @override
+  String toString() => 'BinaryDataReceived(data: ${data.length} bytes)';
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is BinaryDataReceived &&
+          runtimeType == other.runtimeType &&
+          _listEquals(data, other.data);
+
+  @override
+  int get hashCode => Object.hashAll(data);
+}
+
+bool _listEquals<T>(List<T>? a, List<T>? b) {
+  if (a == null) return b == null;
+  if (b == null || a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
+}
+
+/// 关闭接收事件
+class CloseReceived extends WebSocketEvent {
+  final int? code;
+  final String reason;
+
+  const CloseReceived({this.code, this.reason = ''});
+
+  @override
+  String toString() => 'CloseReceived(code: $code, reason: $reason)';
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CloseReceived &&
+          runtimeType == other.runtimeType &&
+          code == other.code &&
+          reason == other.reason;
+
+  @override
+  int get hashCode => Object.hash(code, reason);
 }
 
 /// WebSocket 异常
 class WebSocketException implements Exception {
   final String message;
-  final int? errorCode;
 
-  WebSocketException(this.message, {this.errorCode});
+  const WebSocketException(this.message);
 
   @override
-  String toString() {
-    if (errorCode != null) {
-      return 'WebSocketException: $message (Error code: $errorCode)';
-    }
-    return 'WebSocketException: $message';
-  }
+  String toString() => 'WebSocketException: $message';
 }
 
-/// WebSocket 消息类型
-enum WebSocketMessageType {
-  /// 文本消息
-  text,
-
-  /// 二进制消息
-  binary,
-
-  /// 关闭消息
-  close,
-}
-
-/// WebSocket 消息
-class WebSocketMessage {
-  final WebSocketMessageType type;
-  final dynamic data;
-
-  WebSocketMessage._(this.type, this.data);
-
-  /// 创建文本消息
-  factory WebSocketMessage.text(String text) {
-    return WebSocketMessage._(WebSocketMessageType.text, text);
-  }
-
-  /// 创建二进制消息
-  factory WebSocketMessage.binary(Uint8List data) {
-    return WebSocketMessage._(WebSocketMessageType.binary, data);
-  }
-
-  /// 创建关闭消息
-  factory WebSocketMessage.close(int code, String reason) {
-    return WebSocketMessage._(WebSocketMessageType.close, {'code': code, 'reason': reason});
-  }
-
-  /// 获取文本内容
-  String? get text => type == WebSocketMessageType.text ? data as String : null;
-
-  /// 获取二进制内容
-  Uint8List? get binary => type == WebSocketMessageType.binary ? data as Uint8List : null;
+/// WebSocket 连接已关闭异常
+class WebSocketConnectionClosed extends WebSocketException {
+  const WebSocketConnectionClosed() : super('WebSocket connection is closed');
 }
 
 /// 生成符合 RFC 6455 规范的 WebSocket 密钥
-///
-/// 返回一个 base64 编码的 16 字节随机数，使用加密安全的随机数生成器。
-/// 此密钥用于 WebSocket 握手过程中的 Sec-WebSocket-Key 头部。
-///
-/// 示例:
-/// ```dart
-/// final key = generateWebSocketKey();
-/// print(key); // 输出类似: "dGhlIHNhbXBsZSBub25jZQ=="
-/// ```
-String generateWebSocketKey() {
+String _generateWebSocketKey() {
   final random = Random.secure();
   final bytes = Uint8List(16);
   for (var i = 0; i < 16; i++) {
@@ -206,45 +216,39 @@ String generateWebSocketKey() {
 }
 
 /// 使用 Windows WinHTTP API 的 WebSocket 客户端
-class WinHttpWebSocket {
+/// 兼容 package:web_socket 接口
+class Win32WebSocket {
   Pointer<Void>? _session;
   Pointer<Void>? _connection;
   Pointer<Void>? _request;
   Pointer<Void>? _webSocket;
 
-  WebSocketState _state = WebSocketState.closed;
+  bool _isClosed = true;
+  bool _isClosing = false;
 
-  final _messageController = StreamController<WebSocketMessage>.broadcast();
-  final _stateController = StreamController<WebSocketState>.broadcast();
+  final _eventController = StreamController<WebSocketEvent>.broadcast();
 
-  /// 消息流
-  Stream<WebSocketMessage> get messages => _messageController.stream;
+  /// 事件流 - 兼容 package:web_socket
+  Stream<WebSocketEvent> get events => _eventController.stream;
 
-  /// 状态流
-  Stream<WebSocketState> get stateChanges => _stateController.stream;
-
-  /// 当前状态
-  WebSocketState get state => _state;
-
-  /// 是否已连接
-  bool get isConnected => _state == WebSocketState.open;
-
-  /// 连接到 WebSocket 服务器
-  ///
-  /// [url] WebSocket URL (例如: wss://echo.websocket.org)
-  /// [headers] 可选的自定义请求头
-  Future<void> connect(
-    String url, {
-    Map<String, String>? headers,
-  }) async {
-    if (_state != WebSocketState.closed) {
-      throw WebSocketException('WebSocket is already connected or connecting');
+  /// 创建新的 WebSocket 连接 - 兼容 package:web_socket
+  static Future<Win32WebSocket> connect(Uri url, {Iterable<String>? protocols}) async {
+    if (url.scheme != 'ws' && url.scheme != 'wss') {
+      throw ArgumentError('URL scheme must be ws or wss: $url');
     }
 
-    _setState(WebSocketState.connecting);
+    final ws = Win32WebSocket._();
+    await ws._connect(url, protocols: protocols);
+    return ws;
+  }
+
+  Win32WebSocket._();
+
+  /// 内部连接方法
+  Future<void> _connect(Uri uri, {Iterable<String>? protocols}) async {
+    _isClosed = false;
 
     try {
-      final uri = Uri.parse(url);
       final isSecure = uri.scheme == 'wss';
       final port = uri.port != 0 ? uri.port : (isSecure ? 443 : 80);
 
@@ -262,7 +266,6 @@ class WinHttpWebSocket {
       if (_session == nullptr || _session!.address == 0) {
         throw WebSocketException(
           'Failed to create WinHTTP session',
-          errorCode: WinHttpLibrary.GetLastError(),
         );
       }
 
@@ -279,7 +282,6 @@ class WinHttpWebSocket {
       if (_connection == nullptr || _connection!.address == 0) {
         throw WebSocketException(
           'Failed to create WinHTTP connection',
-          errorCode: WinHttpLibrary.GetLastError(),
         );
       }
 
@@ -302,7 +304,6 @@ class WinHttpWebSocket {
       if (_request == nullptr || _request!.address == 0) {
         throw WebSocketException(
           'Failed to create WinHTTP request',
-          errorCode: WinHttpLibrary.GetLastError(),
         );
       }
 
@@ -312,7 +313,8 @@ class WinHttpWebSocket {
         'Connection': 'Upgrade',
         'Sec-WebSocket-Key': _generateWebSocketKey(),
         'Sec-WebSocket-Version': '13',
-        ...?headers,
+        if (protocols != null && protocols.isNotEmpty)
+          'Sec-WebSocket-Protocol': protocols.join(', '),
       };
 
       for (final entry in wsHeaders.entries) {
@@ -328,7 +330,6 @@ class WinHttpWebSocket {
         if (result == 0) {
           throw WebSocketException(
             'Failed to add request header: ${entry.key}',
-            errorCode: WinHttpLibrary.GetLastError(),
           );
         }
       }
@@ -347,7 +348,6 @@ class WinHttpWebSocket {
       if (sendResult == 0) {
         throw WebSocketException(
           'Failed to send WebSocket request',
-          errorCode: WinHttpLibrary.GetLastError(),
         );
       }
 
@@ -356,37 +356,14 @@ class WinHttpWebSocket {
       if (receiveResult == 0) {
         throw WebSocketException(
           'Failed to receive WebSocket response',
-          errorCode: WinHttpLibrary.GetLastError(),
         );
-      }
-
-      // 查询响应状态码
-      final statusCode = calloc<Uint32>();
-      final statusCodeSize = calloc<Uint32>()..value = sizeOf<Uint32>();
-      try {
-        final queryResult = WinHttpLibrary.WinHttpQueryHeaders(
-          _request!,
-          WINHTTP_QUERY_STATUS_CODE,
-          nullptr,
-          statusCode.cast<Void>(),
-          statusCodeSize,
-          nullptr,
-        );
-        if (queryResult != 0) {
-          print('HTTP Status Code: ${statusCode.value}');
-        }
-      } finally {
-        calloc.free(statusCode);
-        calloc.free(statusCodeSize);
       }
 
       // 升级到 WebSocket
       _webSocket = WinHttpLibrary.WinHttpWebSocketCompleteUpgrade(_request!, 0);
       if (_webSocket == nullptr || _webSocket!.address == 0) {
-        final error = WinHttpLibrary.GetLastError();
         throw WebSocketException(
           'Failed to upgrade to WebSocket',
-          errorCode: error,
         );
       }
 
@@ -394,21 +371,19 @@ class WinHttpWebSocket {
       WinHttpLibrary.WinHttpCloseHandle(_request!);
       _request = null;
 
-      _setState(WebSocketState.open);
-
       // 启动接收循环
       _startReceiveLoop();
     } catch (e) {
       _cleanup();
-      _setState(WebSocketState.closed);
+      _isClosed = true;
       rethrow;
     }
   }
 
-  /// 发送文本消息
-  Future<void> sendText(String text) async {
-    if (_state != WebSocketState.open) {
-      throw WebSocketException('WebSocket is not open');
+  /// 发送文本消息 - 兼容 package:web_socket
+  void sendText(String text) {
+    if (_isClosed || _isClosing) {
+      throw const WebSocketConnectionClosed();
     }
 
     final data = utf8.encode(text);
@@ -424,20 +399,18 @@ class WinHttpWebSocket {
       );
 
       if (result != ERROR_SUCCESS) {
-        throw WebSocketException(
-          'Failed to send text message',
-          errorCode: result,
-        );
+        // 静默丢弃，符合 package:web_socket 规范
+        return;
       }
     } finally {
       calloc.free(buffer);
     }
   }
 
-  /// 发送二进制消息
-  Future<void> sendBinary(Uint8List data) async {
-    if (_state != WebSocketState.open) {
-      throw WebSocketException('WebSocket is not open');
+  /// 发送二进制消息 - 兼容 package:web_socket
+  void sendBytes(Uint8List data) {
+    if (_isClosed || _isClosing) {
+      throw const WebSocketConnectionClosed();
     }
 
     final buffer = calloc<Uint8>(data.length);
@@ -452,34 +425,47 @@ class WinHttpWebSocket {
       );
 
       if (result != ERROR_SUCCESS) {
-        throw WebSocketException(
-          'Failed to send binary message',
-          errorCode: result,
-        );
+        // 静默丢弃，符合 package:web_socket 规范
+        return;
       }
     } finally {
       calloc.free(buffer);
     }
   }
 
-  /// 关闭 WebSocket 连接
-  Future<void> close({int status = 1000, String reason = 'Normal closure'}) async {
-    if (_state == WebSocketState.closing || _state == WebSocketState.closed) {
+  /// 关闭 WebSocket 连接 - 兼容 package:web_socket
+  Future<void> close([int? code, String? reason]) async {
+    if (_isClosed) {
+      throw const WebSocketConnectionClosed();
+    }
+
+    if (_isClosing) {
       return;
     }
 
-    _setState(WebSocketState.closing);
+    _isClosing = true;
+
+    // 验证 code 参数
+    if (code != null && code != 1000 && !(code >= 3000 && code <= 4999)) {
+      throw ArgumentError('Code must be 1000 or in range 3000-4999: $code');
+    }
+
+    // 验证 reason 长度
+    final reasonStr = reason ?? '';
+    final reasonBytes = utf8.encode(reasonStr);
+    if (reasonBytes.length > 123) {
+      throw ArgumentError('Reason must not exceed 123 UTF-8 bytes: $reason');
+    }
 
     try {
       if (_webSocket != null && _webSocket!.address != 0) {
-        final reasonBytes = utf8.encode(reason);
         final buffer = calloc<Uint8>(reasonBytes.length);
         buffer.asTypedList(reasonBytes.length).setAll(0, reasonBytes);
 
         try {
           WinHttpLibrary.WinHttpWebSocketClose(
             _webSocket!,
-            status,
+            code ?? 1005,
             buffer.cast<Void>(),
             reasonBytes.length,
           );
@@ -489,14 +475,17 @@ class WinHttpWebSocket {
       }
     } finally {
       _cleanup();
-      _setState(WebSocketState.closed);
+      _isClosed = true;
+      _isClosing = false;
+      _eventController.add(CloseReceived(code: code ?? 1005, reason: reasonStr));
+      await _eventController.close();
     }
   }
 
   /// 启动接收循环
   void _startReceiveLoop() {
     Future.doWhile(() async {
-      if (_state != WebSocketState.open || _webSocket == null) {
+      if (_isClosed || _isClosing || _webSocket == null) {
         return false;
       }
 
@@ -516,10 +505,10 @@ class WinHttpWebSocket {
 
           if (result != ERROR_SUCCESS && result != ERROR_INVALID_OPERATION) {
             // 连接可能已关闭
-            if (_state == WebSocketState.open) {
-              _messageController.add(WebSocketMessage.close(1006, 'Connection closed abnormally'));
+            if (!_isClosed && !_isClosing) {
+              _eventController.add(const CloseReceived(code: 1006, reason: 'Connection error'));
             }
-            await close(status: 1006, reason: 'Connection error');
+            await close(1006, 'Connection error');
             return false;
           }
 
@@ -531,42 +520,33 @@ class WinHttpWebSocket {
             if (count > 0) {
               final data = buffer.asTypedList(count);
               final text = utf8.decode(data);
-              _messageController.add(WebSocketMessage.text(text));
+              _eventController.add(TextDataReceived(text));
             }
           } else if (type == WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE ||
               type == WINHTTP_WEB_SOCKET_BINARY_FRAGMENT_BUFFER_TYPE) {
             if (count > 0) {
               final data = Uint8List.fromList(buffer.asTypedList(count));
-              _messageController.add(WebSocketMessage.binary(data));
+              _eventController.add(BinaryDataReceived(data));
             }
           } else if (type == WINHTTP_WEB_SOCKET_CLOSE_BUFFER_TYPE) {
-            _messageController.add(WebSocketMessage.close(1000, 'Server closed connection'));
+            _eventController.add(const CloseReceived(code: 1000, reason: 'Server closed connection'));
             await close();
             return false;
           }
 
-          return _state == WebSocketState.open;
+          return !_isClosed && !_isClosing;
         } finally {
           calloc.free(buffer);
           calloc.free(bytesRead);
           calloc.free(bufferType);
         }
       } catch (e) {
-        if (_state == WebSocketState.open) {
-          _messageController.addError(e);
+        if (!_isClosed && !_isClosing) {
+          _eventController.add(CloseReceived(code: 1006, reason: e.toString()));
         }
         return false;
       }
     });
-  }
-
-  /// 生成 WebSocket key
-  String _generateWebSocketKey() => generateWebSocketKey();
-
-  /// 设置状态
-  void _setState(WebSocketState newState) {
-    _state = newState;
-    _stateController.add(newState);
   }
 
   /// 清理资源
@@ -588,11 +568,7 @@ class WinHttpWebSocket {
       _session = null;
     }
   }
-
-  /// 释放资源
-  void dispose() {
-    close();
-    _messageController.close();
-    _stateController.close();
-  }
 }
+
+/// 兼容旧版 API 的别名
+typedef WinHttpWebSocket = Win32WebSocket;

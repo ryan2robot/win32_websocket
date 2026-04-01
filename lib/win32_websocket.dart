@@ -2,35 +2,37 @@
 ///
 /// 这个库提供了在 Windows 平台上使用操作系统自带的 WinHTTP 进行 WebSocket 连接的功能。
 ///
+/// 兼容 package:web_socket 接口，可以与其他 WebSocket 实现互换使用。
+///
 /// 主要功能：
 /// - 支持 ws:// 和 wss:// (WebSocket Secure) 连接
 /// - 发送和接收文本消息
 /// - 发送和接收二进制消息
-/// - 流式消息处理
-/// - 连接状态管理
+/// - 流式事件处理（兼容 package:web_socket）
+/// - 子协议协商支持
 ///
-/// 基本用法：
+/// 基本用法（兼容 package:web_socket）：
 /// ```dart
 /// import 'package:win32_websocket/win32_websocket.dart';
 ///
 /// void main() async {
-///   final ws = WinHttpWebSocket();
+///   final socket = await Win32WebSocket.connect(
+///     Uri.parse('wss://echo.websocket.org'),
+///   );
 ///
-///   // 监听消息
-///   ws.messages.listen((message) {
-///     if (message.type == WebSocketMessageType.text) {
-///       print('收到文本: ${message.text}');
+///   socket.events.listen((event) async {
+///     switch (event) {
+///       case TextDataReceived(text: final text):
+///         print('收到文本: $text');
+///         await socket.close();
+///       case BinaryDataReceived(data: final data):
+///         print('收到二进制数据: ${data.length} 字节');
+///       case CloseReceived(code: final code, reason: final reason):
+///         print('连接已关闭: $code [$reason]');
 ///     }
 ///   });
 ///
-///   // 连接服务器
-///   await ws.connect('wss://echo.websocket.org');
-///
-///   // 发送消息
-///   await ws.sendText('Hello, WebSocket!');
-///
-///   // 关闭连接
-///   await ws.close();
+///   socket.sendText('Hello, WebSocket!');
 /// }
 /// ```
 library;

@@ -99,16 +99,6 @@ class WebSocketConnectionClosed extends WebSocketException {
   const WebSocketConnectionClosed() : super('WebSocket connection is closed');
 }
 
-/// 生成符合 RFC 6455 规范的 WebSocket 密钥
-String _generateWebSocketKey() {
-  final random = Random.secure();
-  final bytes = Uint8List(16);
-  for (var i = 0; i < 16; i++) {
-    bytes[i] = random.nextInt(256);
-  }
-  return base64Encode(bytes);
-}
-
 /// 使用 Windows WinHTTP API 的 WebSocket 客户端
 /// 兼容 package:web_socket 接口
 class Win32WebSocket {
@@ -448,69 +438,82 @@ class Win32WebSocket {
 
   /// 启动接收循环
   void _startReceiveLoop() {
-    Future.doWhile(() async {
-      if (_isClosed || _isClosing || _webSocket == null) {
-        return false;
+    print('Starting receive loop...');
+    // 在单独的 microtask 中运行接收循环，避免阻塞
+    Future(() async {
+      while (!_isClosed && !_isClosing && _webSocket != null) {
+        await _receiveSingleMessage();
       }
+      print('Receive loop ended');
+    });
+  }
+
+  /// 接收单条消息
+  Future<bool> _receiveSingleMessage() async {
+    if (_isClosed || _isClosing || _webSocket == null) {
+      return false;
+    }
+
+    try {
+      final buffer = calloc<Uint8>(4096);
+      final bytesRead = calloc<Uint32>();
+      final bufferType = calloc<Uint32>();
 
       try {
-        final buffer = calloc<Uint8>(4096);
-        final bytesRead = calloc<Uint32>();
-        final bufferType = calloc<Uint32>();
+        print('Calling WinHttpWebSocketReceive...');
+        final result = WinHttpLibrary.WinHttpWebSocketReceive(
+          _webSocket!,
+          buffer.cast<Void>(),
+          4096,
+          bytesRead,
+          bufferType,
+        );
+        print('WinHttpWebSocketReceive returned: $result');
 
-        try {
-          final result = WinHttpLibrary.WinHttpWebSocketReceive(
-            _webSocket!,
-            buffer.cast<Void>(),
-            4096,
-            bytesRead,
-            bufferType,
-          );
-
-          if (result != ERROR_SUCCESS && result != ERROR_INVALID_OPERATION) {
-            // 连接可能已关闭
-            if (!_isClosed && !_isClosing) {
-              _eventController.add(const CloseReceived(code: 1006, reason: 'Connection error'));
-            }
-            await close(1006, 'Connection error');
-            return false;
+        if (result != ERROR_SUCCESS && result != ERROR_INVALID_OPERATION) {
+          // 连接可能已关闭
+          print('Receive error: $result');
+          if (!_isClosed && !_isClosing) {
+            _eventController.add(const CloseReceived(code: 1006, reason: 'Connection error'));
           }
+          await close(1006, 'Connection error');
+          return false;
+        }
 
-          final type = bufferType.value;
-          final count = bytesRead.value;
+        final type = bufferType.value;
+        final count = bytesRead.value;
 
-          if (type == WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE ||
-              type == WINHTTP_WEB_SOCKET_UTF8_FRAGMENT_BUFFER_TYPE) {
-            if (count > 0) {
-              final data = buffer.asTypedList(count);
-              final text = utf8.decode(data);
-              _eventController.add(TextDataReceived(text));
-            }
-          } else if (type == WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE ||
-              type == WINHTTP_WEB_SOCKET_BINARY_FRAGMENT_BUFFER_TYPE) {
-            if (count > 0) {
-              final data = Uint8List.fromList(buffer.asTypedList(count));
-              _eventController.add(BinaryDataReceived(data));
-            }
-          } else if (type == WINHTTP_WEB_SOCKET_CLOSE_BUFFER_TYPE) {
-            _eventController.add(const CloseReceived(code: 1000, reason: 'Server closed connection'));
-            await close();
-            return false;
+        if (type == WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE ||
+            type == WINHTTP_WEB_SOCKET_UTF8_FRAGMENT_BUFFER_TYPE) {
+          if (count > 0) {
+            final data = buffer.asTypedList(count);
+            final text = utf8.decode(data);
+            _eventController.add(TextDataReceived(text));
           }
+        } else if (type == WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE ||
+            type == WINHTTP_WEB_SOCKET_BINARY_FRAGMENT_BUFFER_TYPE) {
+          if (count > 0) {
+            final data = Uint8List.fromList(buffer.asTypedList(count));
+            _eventController.add(BinaryDataReceived(data));
+          }
+        } else if (type == WINHTTP_WEB_SOCKET_CLOSE_BUFFER_TYPE) {
+          _eventController.add(const CloseReceived(code: 1000, reason: 'Server closed connection'));
+          await close();
+          return false;
+        }
 
-          return !_isClosed && !_isClosing;
-        } finally {
-          calloc.free(buffer);
-          calloc.free(bytesRead);
-          calloc.free(bufferType);
-        }
-      } catch (e) {
-        if (!_isClosed && !_isClosing) {
-          _eventController.add(CloseReceived(code: 1006, reason: e.toString()));
-        }
-        return false;
+        return !_isClosed && !_isClosing;
+      } finally {
+        calloc.free(buffer);
+        calloc.free(bytesRead);
+        calloc.free(bufferType);
       }
-    });
+    } catch (e) {
+      if (!_isClosed && !_isClosing) {
+        _eventController.add(CloseReceived(code: 1006, reason: e.toString()));
+      }
+      return false;
+    }
   }
 
   /// 清理资源

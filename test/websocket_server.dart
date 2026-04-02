@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:shelf_web_socket/shelf_web_socket.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -11,7 +12,15 @@ class WebSocketTestServer {
   bool get isRunning => _server != null;
   int get port => _server?.port ?? 0;
 
+  static final _random = Random();
+
+  /// 生成随机端口 (49152-65535, 动态/私有端口范围)
+  static int generateRandomPort() {
+    return 49152 + _random.nextInt(65535 - 49152 + 1);
+  }
+
   /// 启动服务器
+  /// [port] 为 0 时使用随机端口
   Future<void> start({int port = 0}) async {
     final handler = webSocketHandler((WebSocketChannel webSocket) {
       _clients.add(webSocket);
@@ -34,7 +43,9 @@ class WebSocketTestServer {
       );
     });
 
-    _server = await shelf_io.serve(handler, 'localhost', port);
+    // 如果 port 为 0，使用随机端口
+    final targetPort = port == 0 ? generateRandomPort() : port;
+    _server = await shelf_io.serve(handler, 'localhost', targetPort);
     print('WebSocket server started on ws://localhost:${_server!.port}');
   }
 

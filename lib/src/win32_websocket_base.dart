@@ -34,6 +34,13 @@ class Win32WebSocket implements ws.WebSocket {
 
   final _eventController = StreamController<ws.WebSocketEvent>.broadcast();
 
+  // 接收缓冲区大小（默认 64KB）
+  final int _bufferSize;
+
+  // 分片消息缓冲区
+  final StringBuffer _textFragmentBuffer = StringBuffer();
+  final List<int> _binaryFragmentBuffer = <int>[];
+
   /// 事件流 - 兼容 package:web_socket
   @override
   Stream<ws.WebSocketEvent> get events => _eventController.stream;
@@ -43,9 +50,20 @@ class Win32WebSocket implements ws.WebSocket {
   String get protocol => _protocol ?? '';
 
   /// 创建新的 WebSocket 连接 - 兼容 package:web_socket
-  static Future<Win32WebSocket> connect(Uri url, {Iterable<String>? protocols}) async {
+  ///
+  /// [bufferSize] 参数指定接收缓冲区大小（字节），默认 64KB。
+  /// 如果需要接收更大的消息，可以增加此值。
+  static Future<Win32WebSocket> connect(
+    Uri url, {
+    Iterable<String>? protocols,
+    int bufferSize = 65536,
+  }) async {
     if (url.scheme != 'ws' && url.scheme != 'wss') {
       throw ArgumentError('URL scheme must be ws or wss: $url');
+    }
+
+    if (bufferSize <= 0) {
+      throw ArgumentError('Buffer size must be positive: $bufferSize');
     }
 
     // 检查 WinHTTP WebSocket API 是否可用（需要 Windows 8+）
@@ -56,12 +74,12 @@ class Win32WebSocket implements ws.WebSocket {
       );
     }
 
-    final socket = Win32WebSocket._();
+    final socket = Win32WebSocket._(bufferSize);
     await socket._connect(url, protocols: protocols);
     return socket;
   }
 
-  Win32WebSocket._();
+  Win32WebSocket._(this._bufferSize);
 
   /// 内部连接方法
   Future<void> _connect(Uri uri, {Iterable<String>? protocols}) async {
@@ -369,13 +387,11 @@ class Win32WebSocket implements ws.WebSocket {
 
   /// 启动接收循环
   void _startReceiveLoop() {
-    print('Starting receive loop...');
     // 在单独的 microtask 中运行接收循环，避免阻塞
     Future(() async {
       while (!_isClosed && !_isClosing && _webSocket != null) {
         await _receiveSingleMessage();
       }
-      print('Receive loop ended');
     });
   }
 
@@ -386,24 +402,21 @@ class Win32WebSocket implements ws.WebSocket {
     }
 
     try {
-      final buffer = calloc<Uint8>(4096);
+      final buffer = calloc<Uint8>(_bufferSize);
       final bytesRead = calloc<Uint32>();
       final bufferType = calloc<Uint32>();
 
       try {
-        print('Calling WinHttpWebSocketReceive...');
         final result = WinHttpLibrary.WinHttpWebSocketReceive(
           _webSocket!,
           buffer.cast<Void>(),
-          4096,
+          _bufferSize,
           bytesRead,
           bufferType,
         );
-        print('WinHttpWebSocketReceive returned: $result');
 
         if (result != ERROR_SUCCESS && result != ERROR_INVALID_OPERATION) {
           // 连接可能已关闭
-          print('Receive error: $result');
           if (!_isClosed && !_isClosing) {
             _eventController.add(ws.CloseReceived(1006, 'Connection error'));
           }
@@ -414,18 +427,27 @@ class Win32WebSocket implements ws.WebSocket {
         final type = bufferType.value;
         final count = bytesRead.value;
 
-        if (type == WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE ||
-            type == WINHTTP_WEB_SOCKET_UTF8_FRAGMENT_BUFFER_TYPE) {
+        if (type == WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE) {
           if (count > 0) {
             final data = buffer.asTypedList(count);
             final text = utf8.decode(data);
             _eventController.add(ws.TextDataReceived(text));
           }
-        } else if (type == WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE ||
-            type == WINHTTP_WEB_SOCKET_BINARY_FRAGMENT_BUFFER_TYPE) {
+        } else if (type == WINHTTP_WEB_SOCKET_UTF8_FRAGMENT_BUFFER_TYPE) {
+          // 处理分片文本消息
+          if (count > 0) {
+            final data = buffer.asTypedList(count);
+            _textFragmentBuffer.write(utf8.decode(data));
+          }
+        } else if (type == WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE) {
           if (count > 0) {
             final data = Uint8List.fromList(buffer.asTypedList(count));
             _eventController.add(ws.BinaryDataReceived(data));
+          }
+        } else if (type == WINHTTP_WEB_SOCKET_BINARY_FRAGMENT_BUFFER_TYPE) {
+          // 处理分片二进制消息
+          if (count > 0) {
+            _binaryFragmentBuffer.addAll(buffer.asTypedList(count));
           }
         } else if (type == WINHTTP_WEB_SOCKET_CLOSE_BUFFER_TYPE) {
           _eventController.add(ws.CloseReceived(1000, 'Server closed connection'));

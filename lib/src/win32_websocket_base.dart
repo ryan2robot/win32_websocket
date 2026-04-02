@@ -468,6 +468,3 @@ class Win32WebSocket implements ws.WebSocket {
   }
 }
 
-/// 兼容旧版 API 的别名
-@Deprecated('使用 Win32WebSocket 或 WebSocket 代替')
-typedef WinHttpWebSocket = Win32WebSocket;

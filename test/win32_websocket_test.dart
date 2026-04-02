@@ -38,7 +38,7 @@ void main() {
 
   group('Win32WebSocket Events', () {
     test('TextDataReceived event works', () {
-      const event = TextDataReceived('Hello');
+      final event = TextDataReceived('Hello');
       expect(event.text, 'Hello');
       expect(event.toString(), contains('Hello'));
     });
@@ -47,22 +47,22 @@ void main() {
       final data = Uint8List.fromList([1, 2, 3, 4]);
       final event = BinaryDataReceived(data);
       expect(event.data, equals(data));
-      expect(event.toString(), contains('4 bytes'));
+      expect(event.toString(), contains('4'));
     });
 
     test('CloseReceived event works', () {
-      const event = CloseReceived(code: 1000, reason: 'Normal closure');
+      final event = CloseReceived(1000, 'Normal closure');
       expect(event.code, 1000);
       expect(event.reason, 'Normal closure');
     });
 
     test('WebSocketException toString', () {
-      const exception = WebSocketException('Test error');
+      final exception = WebSocketException('Test error');
       expect(exception.toString(), contains('Test error'));
     });
 
     test('WebSocketConnectionClosed exception', () {
-      const exception = WebSocketConnectionClosed();
+      final exception = WebSocketConnectionClosed();
       expect(exception.toString(), contains('closed'));
     });
   });

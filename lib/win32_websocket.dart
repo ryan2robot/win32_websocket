@@ -56,4 +56,17 @@
 /// ```
 library;
 
-export 'src/win32_websocket_base.dart';
+// 从 package:web_socket 重新导出标准接口
+// 这样用户可以直接使用 win32_websocket 替换 web_socket
+export 'package:web_socket/web_socket.dart'
+    show
+        WebSocket,
+        WebSocketEvent,
+        TextDataReceived,
+        BinaryDataReceived,
+        CloseReceived,
+        WebSocketException,
+        WebSocketConnectionClosed;
+
+// 导出 Win32 实现
+export 'src/win32_websocket_base.dart' show Win32WebSocket;

@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi';
-import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
@@ -9,11 +8,15 @@ import 'package:ffi/ffi.dart';
 import 'win32_bindings.dart';
 
 /// WebSocket 事件基类
+///
+/// 与 package:web_socket 兼容的事件基类
 sealed class WebSocketEvent {
   const WebSocketEvent();
 }
 
 /// 文本数据接收事件
+///
+/// 与 package:web_socket 兼容
 class TextDataReceived extends WebSocketEvent {
   final String text;
 
@@ -34,6 +37,8 @@ class TextDataReceived extends WebSocketEvent {
 }
 
 /// 二进制数据接收事件
+///
+/// 与 package:web_socket 兼容
 class BinaryDataReceived extends WebSocketEvent {
   final Uint8List data;
 
@@ -63,6 +68,8 @@ bool _listEquals<T>(List<T>? a, List<T>? b) {
 }
 
 /// 关闭接收事件
+///
+/// 与 package:web_socket 兼容
 class CloseReceived extends WebSocketEvent {
   final int? code;
   final String reason;
@@ -85,6 +92,8 @@ class CloseReceived extends WebSocketEvent {
 }
 
 /// WebSocket 异常
+///
+/// 与 package:web_socket 兼容
 class WebSocketException implements Exception {
   final String message;
 
@@ -95,13 +104,89 @@ class WebSocketException implements Exception {
 }
 
 /// WebSocket 连接已关闭异常
+///
+/// 与 package:web_socket 兼容
 class WebSocketConnectionClosed extends WebSocketException {
   const WebSocketConnectionClosed() : super('WebSocket connection is closed');
 }
 
+/// WebSocket 抽象接口
+///
+/// 与 package:web_socket 完全兼容的接口定义
+///
+/// 使用方式：
+/// ```dart
+/// import 'package:win32_websocket/win32_websocket.dart';
+///
+/// void main() async {
+///   final socket = await WebSocket.connect(
+///     Uri.parse('wss://echo.websocket.org'),
+///   );
+///
+///   socket.events.listen((event) async {
+///     switch (event) {
+///       case TextDataReceived(text: final text):
+///         print('收到文本: $text');
+///         await socket.close();
+///       case BinaryDataReceived(data: final data):
+///         print('收到二进制数据: ${data.length} 字节');
+///       case CloseReceived(code: final code, reason: final reason):
+///         print('连接已关闭: $code [$reason]');
+///     }
+///   });
+///
+///   socket.sendText('Hello, WebSocket!');
+/// }
+/// ```
+abstract interface class WebSocket {
+  /// 创建新的 WebSocket 连接
+  ///
+  /// [url] - WebSocket 服务器地址 (ws:// 或 wss://)
+  /// [protocols] - 可选的子协议列表
+  static Future<WebSocket> connect(Uri url, {Iterable<String>? protocols}) {
+    return Win32WebSocket.connect(url, protocols: protocols);
+  }
+
+  /// 事件流 - 接收来自服务器的消息
+  ///
+  /// 事件类型包括：
+  /// - [TextDataReceived] - 收到文本消息
+  /// - [BinaryDataReceived] - 收到二进制消息
+  /// - [CloseReceived] - 连接关闭
+  Stream<WebSocketEvent> get events;
+
+  /// 发送文本消息
+  ///
+  /// 如果连接已关闭，会抛出 [WebSocketConnectionClosed] 异常
+  void sendText(String text);
+
+  /// 发送二进制消息
+  ///
+  /// 如果连接已关闭，会抛出 [WebSocketConnectionClosed] 异常
+  void sendBytes(Uint8List bytes);
+
+  /// 关闭 WebSocket 连接
+  ///
+  /// [code] - 关闭代码，必须是 1000 或在 3000-4999 范围内
+  /// [reason] - 关闭原因，最多 123 个 UTF-8 字节
+  Future<void> close([int? code, String? reason]);
+}
+
 /// 使用 Windows WinHTTP API 的 WebSocket 客户端
-/// 兼容 package:web_socket 接口
-class Win32WebSocket {
+///
+/// 实现了 [WebSocket] 接口，与 package:web_socket 完全兼容
+///
+/// 可以直接替换 package:web_socket 中的 WebSocket 实现：
+/// ```dart
+/// // 原来使用 package:web_socket
+/// import 'package:web_socket/web_socket.dart';
+/// final socket = await WebSocket.connect(url);
+///
+/// // 替换为 win32_websocket
+/// import 'package:win32_websocket/win32_websocket.dart';
+/// final socket = await WebSocket.connect(url); // 完全相同的 API
+/// ```
+class Win32WebSocket implements WebSocket {
   Pointer<Void>? _session;
   Pointer<Void>? _connection;
   Pointer<Void>? _request;
@@ -113,6 +198,7 @@ class Win32WebSocket {
   final _eventController = StreamController<WebSocketEvent>.broadcast();
 
   /// 事件流 - 兼容 package:web_socket
+  @override
   Stream<WebSocketEvent> get events => _eventController.stream;
 
   /// 创建新的 WebSocket 连接 - 兼容 package:web_socket
@@ -339,6 +425,7 @@ class Win32WebSocket {
   }
 
   /// 发送文本消息 - 兼容 package:web_socket
+  @override
   void sendText(String text) {
     if (_isClosed || _isClosing) {
       throw const WebSocketConnectionClosed();
@@ -366,6 +453,7 @@ class Win32WebSocket {
   }
 
   /// 发送二进制消息 - 兼容 package:web_socket
+  @override
   void sendBytes(Uint8List data) {
     if (_isClosed || _isClosing) {
       throw const WebSocketConnectionClosed();
@@ -392,6 +480,7 @@ class Win32WebSocket {
   }
 
   /// 关闭 WebSocket 连接 - 兼容 package:web_socket
+  @override
   Future<void> close([int? code, String? reason]) async {
     if (_isClosed || _isClosing) {
       return;
@@ -538,4 +627,5 @@ class Win32WebSocket {
 }
 
 /// 兼容旧版 API 的别名
+@Deprecated('使用 Win32WebSocket 或 WebSocket 代替')
 typedef WinHttpWebSocket = Win32WebSocket;

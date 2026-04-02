@@ -16,7 +16,7 @@
 /// import 'package:win32_websocket/win32_websocket.dart';
 ///
 /// void main() async {
-///   final socket = await Win32WebSocket.connect(
+///   final socket = await WebSocket.connect(
 ///     Uri.parse('wss://echo.websocket.org'),
 ///   );
 ///
@@ -33,6 +33,25 @@
 ///   });
 ///
 ///   socket.sendText('Hello, WebSocket!');
+/// }
+/// ```
+///
+/// 无缝替换 package:web_socket：
+/// ```dart
+/// // 原来使用 package:web_socket
+/// import 'package:web_socket/web_socket.dart';
+///
+/// void main() async {
+///   final socket = await WebSocket.connect(Uri.parse('wss://example.com'));
+///   // ...
+/// }
+///
+/// // 替换为 win32_websocket（Windows 平台专用）
+/// import 'package:win32_websocket/win32_websocket.dart';
+///
+/// void main() async {
+///   final socket = await WebSocket.connect(Uri.parse('wss://example.com'));
+///   // 完全相同的 API，无需修改其他代码
 /// }
 /// ```
 library;
